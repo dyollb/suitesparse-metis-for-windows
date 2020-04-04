@@ -5,31 +5,61 @@
 # Updated by jesnault (jerome.esnault@inria.fr) 2014-01-21
 # -----------------------------------------------------------------
 
-PROJECT(SuiteSparseProject)
+# Hunter stuff must be included before project()
+option(HUNTER_ENABLED "Enable Hunter package manager support" OFF)
 
-cmake_minimum_required(VERSION 2.8.10)
+if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
+  cmake_policy(SET CMP0074 NEW) # Use PKG_ROOT variables.
+endif()
+
+include(cmake/HunterGate.cmake)
+HunterGate(
+    URL "https://github.com/cpp-pm/hunter/archive/v0.23.244.tar.gz"
+    SHA1 "2c0f491fd0b80f7b09e3d21adb97237161ef9835"
+)
+project(SuiteSparseProject)
+
+cmake_minimum_required(VERSION 3.1)
+
+# https://cmake.org/cmake/help/latest/prop_tgt/CXX_STANDARD.html
+string(COMPARE EQUAL "${CMAKE_CXX_STANDARD}" "" no_cmake_cxx_standard_set)
+if(no_cmake_cxx_standard_set)
+  set(CMAKE_CXX_STANDARD 11)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+  message(STATUS "Using default C++ standard ${CMAKE_CXX_STANDARD}")
+else()
+  message(STATUS "Using user specified C++ standard ${CMAKE_CXX_STANDARD}")
+endif()
 
 include(checkGetSuiteSparse.cmake)
 
-SET(LIBRARY_OUTPUT_PATH ${${PROJECT_NAME}_BINARY_DIR}/lib CACHE PATH "Output directory for libraries" )
-SET(EXECUTABLE_OUTPUT_PATH ${${PROJECT_NAME}_BINARY_DIR}/bin CACHE PATH "Output directory for applications" )
+if(BUILD_SHARED_LIBS)
+	set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif(BUILD_SHARED_LIBS)
+
+
+set(LIBRARY_OUTPUT_PATH ${${PROJECT_NAME}_BINARY_DIR}/lib CACHE PATH "Output directory for libraries" )
+set(EXECUTABLE_OUTPUT_PATH ${${PROJECT_NAME}_BINARY_DIR}/bin CACHE PATH "Output directory for applications" )
 
 # Override "CMAKE_INSTALL_PREFIX", on Windows if not set:
-IF(WIN32 AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-	SET(SUITESPARSE_INSTALL_PREFIX "${${PROJECT_NAME}_BINARY_DIR}/install" CACHE PATH "Prefix prepended to install directories")
-	SET(CMAKE_INSTALL_PREFIX "${SUITESPARSE_INSTALL_PREFIX}" CACHE INTERNAL "Prefix prepended to install directories" FORCE)
-	message(STATUS "Setting CMAKE_INSTALL_PREFIX to: ${CMAKE_INSTALL_PREFIX}")
-ENDIF()
+if(WIN32 AND (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT))
+	set(CMAKE_INSTALL_PREFIX "${${PROJECT_NAME}_BINARY_DIR}/install" CACHE PATH "Prefix prepended to install directories" FORCE)
+	message(STATUS "Setting default CMAKE_INSTALL_PREFIX to: ${CMAKE_INSTALL_PREFIX}")
+else()
+    # pass user defined install prefix to SuiteSparse
+    message(STATUS "Using user defined CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
+endif()
 
 # Fix GKlib path:
-IF(NOT WIN32)
-	SET(GKLIB_PATH "${${PROJECT_NAME}_SOURCE_DIR}/metis/GKlib" CACHE INTERNAL "Path to GKlib (for METIS)" FORCE)
-ENDIF()
+if(NOT WIN32)
+  set(GKLIB_PATH "${${PROJECT_NAME}_SOURCE_DIR}/SuiteSparse/metis-5.1.0/GKlib" CACHE INTERNAL "Path to GKlib (for METIS)" FORCE)
+endif()
 
 # allow creating DLLs in Windows without touching the source code:
-IF(NOT ${CMAKE_VERSION} VERSION_LESS "3.4.0" AND WIN32)
+if(NOT ${CMAKE_VERSION} VERSION_LESS "3.4.0" AND WIN32)
 	set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-ENDIF()
+endif()
 
 ## get CMAKE_INSTALL_BINDIR and CMAKE_INSTALL_LIBDIR
 include(GNUInstallDirs)
@@ -47,20 +77,20 @@ mark_as_advanced(LIB_POSTFIX)
 # We want libraries to be named "libXXX" and "libXXXd" in all compilers:
 # ------------------------------------------------------------------------
 set(CMAKE_DEBUG_POSTFIX  "d")
-IF(MSVC)
+if(MSVC)
 	set(SP_LIB_PREFIX "lib")  # Libs are: "libXXX"
-ENDIF(MSVC)
+endif(MSVC)
 
 ## check if we can build metis
-SET(BUILD_METIS_DEFAULT ON)
-IF(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/metis/CMakeLists.txt")
-	SET(BUILD_METIS_DEFAULT OFF)
-ENDIF(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/metis/CMakeLists.txt")
+set(BUILD_METIS_DEFAULT ON)
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/SuiteSparse/metis-5.1.0/CMakeLists.txt")
+	set(BUILD_METIS_DEFAULT OFF)
+endif()
 
-SET(WITH_CUDA OFF CACHE BOOL "Build with CUDA support")
+set(WITH_CUDA OFF CACHE BOOL "Build with CUDA support")
 
-SET(BUILD_METIS ${BUILD_METIS_DEFAULT} CACHE BOOL "Build METIS for partitioning?")
-SET(METIS_DIR ${${PROJECT_NAME}_SOURCE_DIR}/metis CACHE PATH "Source directory of METIS")
+set(BUILD_METIS ${BUILD_METIS_DEFAULT} CACHE BOOL "Build METIS for partitioning?")
+set(METIS_DIR ${${PROJECT_NAME}_SOURCE_DIR}/SuiteSparse/metis-5.1.0 CACHE PATH "Source directory of METIS")
 
 if(BUILD_METIS)
 	## prepare the installation :
@@ -85,7 +115,7 @@ if(BUILD_METIS)
 			)
 		endif()
 	endif()
-	add_subdirectory(metis) ## important part for building metis from its src files
+    add_subdirectory(SuiteSparse/metis-5.1.0) ## important part for building metis from its src files
 endif(BUILD_METIS)
 
 
@@ -152,15 +182,15 @@ macro(declare_suitesparse_library targetName srcsList headersList)
 	if(WITH_CUDA)
 		find_package(CUDA)
 	endif()
-	IF(${CUDA_FOUND})
-		INCLUDE_DIRECTORIES(${CUDA_INCLUDE_DIRS})
-		INCLUDE_DIRECTORIES(${SuiteSparse_GPUQREngine_INCLUDE})
-		INCLUDE_DIRECTORIES(${SuiteSparse_GPURuntime_INCLUDE})
+	if(${CUDA_FOUND})
+		include_directories(${CUDA_INCLUDE_DIRS})
+		include_directories(${SuiteSparse_GPUQREngine_INCLUDE})
+		include_directories(${SuiteSparse_GPURuntime_INCLUDE})
 		CUDA_ADD_LIBRARY(${targetName} ${srcsList} ${headersList})
-	ELSE(${CUDA_FOUND})
-		ADD_LIBRARY(${targetName} ${srcsList} ${headersList})
-	ENDIF(${CUDA_FOUND})
-	SET_TARGET_PROPERTIES(${targetName} PROPERTIES
+	else(${CUDA_FOUND})
+		add_library(${targetName} ${srcsList} ${headersList})
+	endif(${CUDA_FOUND})
+	set_target_properties(${targetName} PROPERTIES
 		OUTPUT_NAME ${SP_LIB_PREFIX}${targetName}
 	)
 
@@ -174,82 +204,60 @@ endmacro()
 
 # Example of usage:
 #  REMOVE_MATCHING_FILES_FROM_LIST(".*_LIN.cpp" my_srcs)
-MACRO(REMOVE_MATCHING_FILES_FROM_LIST match_expr lst_files)
-	SET(lst_files_aux "")
-	FOREACH(FIL ${${lst_files}})
-		IF(NOT ${FIL} MATCHES "${match_expr}")
-			SET(lst_files_aux "${lst_files_aux}" "${FIL}")
-		ENDIF(NOT ${FIL} MATCHES "${match_expr}")
-	ENDFOREACH(FIL)
-	SET(${lst_files} ${lst_files_aux})
-ENDMACRO(REMOVE_MATCHING_FILES_FROM_LIST)
+macro(REMOVE_MATCHING_FILES_FROM_LIST match_expr lst_files)
+	set(lst_files_aux "")
+	foreach(FIL ${${lst_files}})
+		if(NOT ${FIL} MATCHES "${match_expr}")
+			set(lst_files_aux "${lst_files_aux}" "${FIL}")
+		endif(NOT ${FIL} MATCHES "${match_expr}")
+	endforeach(FIL)
+	set(${lst_files} ${lst_files_aux})
+endmacro(REMOVE_MATCHING_FILES_FROM_LIST)
 
 if(WITH_CUDA)
-	FIND_PACKAGE(cuda)
-	IF(${CUDA_FOUND})
-		ADD_DEFINITIONS(-DGPU_BLAS)
-	ENDIF(${CUDA_FOUND})
+	find_package(cuda)
+	if(${CUDA_FOUND})
+		add_definitions(-DGPU_BLAS)
+	endif(${CUDA_FOUND})
 endif()
 
-find_package(BLAS)
-find_package(LAPACK)
-if (LAPACK_FOUND AND BLAS_FOUND)
-	message(STATUS "found lapack and blas config file. Linking targets lapack and blas")
-	set(SuiteSparse_LINKER_LAPACK_BLAS_LIBS ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
-else () # LAPACK is not found
+hunter_add_package(LAPACK) # only in effect if HUNTER_ENABLED is set
+# prefer LAPACK config file
+if (WIN32)
+  set(LAPACK_DIR "lapack_windows/x64/" CACHE PATH "LAPACK directory" )
+endif()
 
-## Need to use SuiteSparse_LINKER_LAPACK_BLAS_LIBS in our subproject in case of SHARED flag is set to ON
-SET(SUITESPARSE_USE_CUSTOM_BLAS_LAPACK_LIBS OFF CACHE BOOL "Check if you have custom LAPACK/BLAS libraries (AMD,...)")
-IF (SUITESPARSE_USE_CUSTOM_BLAS_LAPACK_LIBS)
-	SET(SUITESPARSE_CUSTOM_BLAS_LIB "" CACHE FILE "Path to custom library file for BLAS")
-	SET(SUITESPARSE_CUSTOM_LAPACK_LIB "" CACHE FILE "Path to custom library file for LAPACK")
-	IF (NOT EXISTS "${SUITESPARSE_CUSTOM_BLAS_LIB}" OR NOT EXISTS "${SUITESPARSE_CUSTOM_LAPACK_LIB}")
-		MESSAGE("*Error*: Correctly set SUITESPARSE_CUSTOM_BLAS_LIB and SUITESPARSE_CUSTOM_LAPACK_LIB or uncheck SUITESPARSE_USE_CUSTOM_BLAS_LAPACK_LIBS")
-	ELSE()
-		SET(SuiteSparse_LINKER_LAPACK_BLAS_LIBS ${SUITESPARSE_CUSTOM_BLAS_LIB} ${SUITESPARSE_CUSTOM_LAPACK_LIB})
-	ENDIF()
-ELSE()
-	IF (UNIX)
-		SET(SuiteSparse_LINKER_LAPACK_BLAS_LIBS lapack blas rt)
-	ELSE()
-		IF(CMAKE_SIZEOF_VOID_P EQUAL 8)  # Size in bytes!
-			set(PATH_WORD_SIZE "x64")
-		ELSE(CMAKE_SIZEOF_VOID_P EQUAL 8)  # Size in bytes!
-			set(PATH_WORD_SIZE "x32")
-		ENDIF(CMAKE_SIZEOF_VOID_P EQUAL 8)
+find_package(LAPACK CONFIG)
+if (LAPACK_FOUND AND TARGET blas AND TARGET lapack)
+  message(STATUS "found lapack and blas config file. Linking targets lapack and blas")
+  message(STATUS "- LAPACK_CONFIG: ${LAPACK_CONFIG}")
+  set(SuiteSparse_LINKER_LAPACK_BLAS_LIBS lapack blas)
+  # for suitesparse-config file set method used to find LAPACK (and BLAS)
+  set(SuiteSparse_LAPACK_used_CONFIG YES)
+else()
+  # missing config file or targets, try BLAS and LAPACK
+  find_package(BLAS)
+  find_package(LAPACK)
+  if (BLAS_FOUND AND LAPACK_FOUND)
+    message(STATUS "found lapack and blas config file. Linking targets lapack and blas")
+    message(STATUS "- LAPACK_LIBRARIES: ${LAPACK_LIBRARIES}")
+    message(STATUS "- BLAS_LIBRARIES:   ${BLAS_LIBRARIES}")
+    set(SuiteSparse_LINKER_LAPACK_BLAS_LIBS ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
+    # for suitesparse-config file set method used to find LAPACK (and BLAS)
+    set(SuiteSparse_LAPACK_used_CONFIG NO)
+  else () # LAPACK is not found
+    message(FATAL_ERROR "lapack not found")
+  endif()
+endif()
 
-		add_library(blas SHARED IMPORTED)
-		set_property(TARGET blas PROPERTY IMPORTED_LOCATION ${SuiteSparseProject_SOURCE_DIR}/lapack_windows/${PATH_WORD_SIZE}/libblas.dll)
-		set_property(TARGET blas PROPERTY IMPORTED_IMPLIB 	${SuiteSparseProject_SOURCE_DIR}/lapack_windows/${PATH_WORD_SIZE}/libblas.lib)
-
-		add_library(lapack SHARED IMPORTED)
-		set_property(TARGET lapack PROPERTY IMPORTED_LOCATION 	${SuiteSparseProject_SOURCE_DIR}/lapack_windows/${PATH_WORD_SIZE}/liblapack.dll)
-		set_property(TARGET lapack PROPERTY IMPORTED_IMPLIB 	${SuiteSparseProject_SOURCE_DIR}/lapack_windows/${PATH_WORD_SIZE}/liblapack.lib)
-
-		SET(SuiteSparse_LINKER_LAPACK_BLAS_LIBS blas lapack)
-
-		## install lapack and blas dependencies
-		file(GLOB lapack_blas_windows_libs 	"${CMAKE_SOURCE_DIR}/lapack_windows/${PATH_WORD_SIZE}/*.lib")
-		file(GLOB lapack_blas_windows_dll 	"${CMAKE_SOURCE_DIR}/lapack_windows/${PATH_WORD_SIZE}/*.dll")
-		if(lapack_blas_windows_dll AND lapack_blas_windows_libs)
-			set(SuiteSparse_LAPACK_BLAS_LIB_DIR "lib${LIB_POSTFIX}/lapack_blas_windows") ## used in UseSuiteSparse*.cmake
-			install(FILES 		${lapack_blas_windows_libs}
-								${lapack_blas_windows_dll}
-					DESTINATION ${SuiteSparse_LAPACK_BLAS_LIB_DIR}
-			)
-		endif()
-	ENDIF()
-ENDIF()
-ENDIF() # LAPACK found
-
-IF(BUILD_METIS)
+if(BUILD_METIS)
 	set(SuiteSparse_LINKER_METIS_LIBS "metis")
 	## namespaced library target for config
 	set(SuiteSparse_EXPORTED_METIS_LIBS "SuiteSparse::metis")
 else()
 	set(SuiteSparse_LINKER_METIS_LIBS "")
 	set(SuiteSparse_EXPORTED_METIS_LIBS "")
-ENDIF()
+endif()
 
 add_subdirectory(SuiteSparse)
 
